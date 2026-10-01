@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mumbai City Summary</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="mumbai_logic.js"></script>
+<style>
+  :root {
+    --ink: #14213D; --ink-soft: #4A5568; --line: #E2E5EA; --paper: #FCFCFB; --panel: #FFFFFF;
+    --accent: #2E5A8C; --red: #C13B3B; --amber: #C88A1E; --green: #2F8552; --grey: #8A8F98;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+         background: var(--paper); color: var(--ink); font-size: 14px; line-height: 1.4; }
+  .num { font-variant-numeric: tabular-nums; }
+  h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+  h2 { font-size: 14px; margin: 0 0 10px; font-weight: 650; color: var(--accent); }
+  header { padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel);
+           display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 30; }
+  #status { font-size: 12px; color: var(--ink-soft); }
+  #status.error { color: var(--red); font-weight: 600; }
+  .filters { background: var(--panel); border-bottom: 1px solid var(--line); padding: 12px 24px;
+             display: flex; flex-wrap: wrap; gap: 14px; position: sticky; top: 57px; z-index: 29; }
+  .filter-item { display: flex; flex-direction: column; gap: 3px; min-width: 150px; }
+  .filter-item label { font-size: 11px; color: var(--ink-soft); font-weight: 600; }
+  .filter-item select { font-size: 13px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px;
+                         background: #fff; color: var(--ink); cursor: pointer; }
+  .filter-item select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  main { padding: 20px 24px 60px; max-width: 1400px; margin: 0 auto; }
+  .showing { font-size: 13px; color: var(--accent); font-style: italic; margin-bottom: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px; margin-bottom: 20px; }
+  .note { font-size: 12px; color: var(--ink-soft); margin: 0 0 12px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  thead th { position: sticky; top: 0; background: #F4F6F9; text-align: right; padding: 6px 8px;
+             border-bottom: 2px solid var(--line); font-weight: 650; color: var(--ink-soft); font-size: 11px; white-space: nowrap; }
+  thead th:first-child { text-align: left; }
+  tbody td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  tbody td:first-child { text-align: left; font-weight: 550; }
+  tbody tr:hover { background: #F8FAFC; }
+  tfoot td { padding: 6px 8px; font-weight: 700; border-top: 2px solid var(--ink); text-align: right; }
+  tfoot td:first-child { text-align: left; }
+  .scroll-table { max-height: 420px; overflow-y: auto; }
+  .pct-red { background: #FDE8E8; color: #A33; font-weight: 650; }
+  .pct-amber { background: #FDF3D8; color: #A66A00; font-weight: 650; }
+  .pct-green { background: #E4F3E9; color: #1F6B3D; font-weight: 650; }
+  .pct-grey { color: var(--grey); }
+  .heat-cell { padding: 5px 10px !important; border-radius: 3px; }
+  .badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 8px; background: #EEF2F7; color: var(--ink-soft); margin-left: 6px; }
+  .loading-overlay { position: fixed; inset: 0; background: var(--paper); z-index: 100;
+                      display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; }
+  .spinner { width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--accent);
+             border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="loadingOverlay" class="loading-overlay">
+  <div class="spinner"></div>
+  <div id="loadingText">Loading Mumbai_Summary_Data.xlsx&hellip;</div>
+</div>
+
+<header>
+  <h1>Mumbai City Summary</h1>
+  <div style="text-align:right">
+    <div id="status"></div>
+    <div style="font-size:10px;color:var(--ink-soft)">build 2026-10-01</div>
+  </div>
+</header>
+
+<div class="filters" id="filterBar"></div>
+
+<main>
+  <div class="showing" id="showingLine"></div>
+
+  <div class="card">
+    <h2>Zone Summary</h2>
+    <p class="note">Zone is inferred from 468 Cluster names via keyword-matching against known Mumbai geography (not in the source data) - see README. Out-of-Region and Other/Unmapped are included in totals but not geographically precise.</p>
+    <div class="scroll-table">
+      <table id="zoneTable">
+        <thead><tr><th>Zone</th><th>23-24</th><th>24-25</th><th>25-26</th><th>26-27</th><th>Growth (23-24&rarr;26-27)</th><th>BA Count</th><th>Focus Count</th></tr></thead>
+        <tbody></tbody>
+        <tfoot><tr id="zoneGrandTotal"></tr></tfoot>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>BA Segment Summary</h2>
+    <p class="note">Focus Accounts from Mumbai_Focused_Accounts_List_SFDC_1st_Oct_26.xlsx, GST-matched (934 of 4,044 BAs). Coverage % = Focus Count / BA Count within this segment and current filter selection.</p>
+    <div class="scroll-table">
+      <table id="segmentTable">
+        <thead><tr><th>BA Segment</th><th>23-24</th><th>24-25</th><th>25-26</th><th>26-27</th><th>Growth (23-24&rarr;26-27)</th><th>BA Count</th><th>Focus Count</th><th>Coverage %</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Locality Category (Hotspot)</h2>
+    <p class="note">Weighted index: 60% sales volume, 20% retail counter concentration, 20% kitchen showroom concentration (Google Places), built at zone level since no finer locality field exists in the source.</p>
+    <div class="scroll-table">
+      <table id="localityTable">
+        <thead><tr><th>Category</th><th>23-24</th><th>24-25</th><th>25-26</th><th>26-27</th><th>BA Count</th><th>Focus Count</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Sales Officer Performance (from Project Review Data - West I)</h2>
+    <p class="note">Static reference - not filter-driven. 33 Mumbai SOs, sorted by Sep'26 Ach% descending.</p>
+    <div class="scroll-table">
+      <table id="soTable">
+        <thead><tr><th>SO Name</th><th>Designation</th><th>All Accounts</th><th>Total Visits (PJP)</th>
+          <th>Visit Ach%</th><th>Focus Accounts</th><th>Focus Visits (PJP)</th><th>Focus Ach%</th>
+          <th>Sep'26 Target</th><th>Sep'26 Ach</th><th>Sep'26 Ach%</th>
+          <th>Pipeline Target (3X CM)</th><th>Pipeline Ach</th><th>No of New Leads</th><th>Pipeline from New Leads</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+const DATA_FILE = 'Mumbai_Summary_Data.xlsx';
+const SO_FILE = 'mumbai_so_performance.json';
+
+const state = { baType: '(All)', segment: '(All)', loyalty: '(All)', zone: '(All)', localityCategory: '(All)', focusAccount: '(All)' };
+let ROWS = [];
+let SO_DATA = [];
+let BA_TYPES = [], SEGMENTS = [], LOYALTIES = [], ZONES = [], LOCALITY_CATS = [];
+
+function fmt(n) { return n === null || n === undefined ? '\u2013' : Math.round(n).toLocaleString('en-IN'); }
+function fmtPct(n) { return n === null || n === undefined ? '\u2013' : (n*100).toFixed(1) + '%'; }
+function escapeHtml(s) { return (s===null||s===undefined) ? '' : String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function growthClass(g) {
+  if (g === null || g === undefined) return '';
+  if (g < -0.1) return 'pct-red';
+  if (g < 0) return 'pct-amber';
+  return 'pct-green';
+}
+
+function makeSelect(key, label, options) {
+  const wrap = document.createElement('div'); wrap.className = 'filter-item';
+  const lab = document.createElement('label'); lab.textContent = label; wrap.appendChild(lab);
+  const sel = document.createElement('select');
+  options.forEach(o => { const opt = document.createElement('option'); opt.value = o; opt.textContent = o; sel.appendChild(opt); });
+  sel.value = state[key];
+  sel.addEventListener('change', () => { state[key] = sel.value; render(); });
+  wrap.appendChild(sel);
+  return wrap;
+}
+
+function buildFilterBar() {
+  const bar = document.getElementById('filterBar');
+  bar.innerHTML = '';
+  bar.appendChild(makeSelect('baType', 'BA Type', ['(All)', ...BA_TYPES]));
+  bar.appendChild(makeSelect('segment', 'BA Segment', ['(All)', ...SEGMENTS]));
+  bar.appendChild(makeSelect('loyalty', 'Loyalty', ['(All)', ...LOYALTIES]));
+  bar.appendChild(makeSelect('zone', 'Zone', ['(All)', ...ZONES]));
+  bar.appendChild(makeSelect('localityCategory', 'Locality Category', ['(All)', ...LOCALITY_CATS]));
+  bar.appendChild(makeSelect('focusAccount', 'Focus Account', ['(All)', 'Yes', 'No']));
+}
+
+function render() {
+  const filtered = applyFilters(ROWS, state);
+  document.getElementById('showingLine').textContent = filtered.length.toLocaleString() + ' of ' + ROWS.length.toLocaleString() + ' accounts shown';
+
+  const zt = zoneTable(filtered);
+  const gt = grandTotal(zt);
+  renderZoneTable(zt, gt);
+
+  const st = segmentTable(filtered);
+  renderSegmentTable(st);
+
+  const lt = localityTable(filtered);
+  renderLocalityTable(lt);
+
+  renderSOTable();
+}
+
+function renderZoneTable(zt, gt) {
+  document.querySelector('#zoneTable tbody').innerHTML = zt.map(z => {
+    const g = growth(z.qty[0], z.qty[3]);
+    return '<tr><td>' + escapeHtml(z.zone) + '</td>' +
+      '<td class="num">' + fmt(z.qty[0]) + '</td><td class="num">' + fmt(z.qty[1]) + '</td>' +
+      '<td class="num">' + fmt(z.qty[2]) + '</td><td class="num">' + fmt(z.qty[3]) + '</td>' +
+      '<td class="num ' + growthClass(g) + '">' + fmtPct(g) + '</td>' +
+      '<td class="num">' + fmt(z.baCount) + '</td><td class="num">' + fmt(z.focusCount) + '</td></tr>';
+  }).join('');
+  const gRow = document.getElementById('zoneGrandTotal');
+  const gGrowth = growth(gt.qty[0], gt.qty[3]);
+  gRow.innerHTML = '<td>Grand Total</td>' +
+    '<td class="num">' + fmt(gt.qty[0]) + '</td><td class="num">' + fmt(gt.qty[1]) + '</td>' +
+    '<td class="num">' + fmt(gt.qty[2]) + '</td><td class="num">' + fmt(gt.qty[3]) + '</td>' +
+    '<td class="num ' + growthClass(gGrowth) + '">' + fmtPct(gGrowth) + '</td>' +
+    '<td class="num">' + fmt(gt.baCount) + '</td><td class="num">' + fmt(gt.focusCount) + '</td>';
+}
+
+function renderSegmentTable(st) {
+  document.querySelector('#segmentTable tbody').innerHTML = st.map(s => {
+    const g = growth(s.qty[0], s.qty[3]);
+    return '<tr><td>' + escapeHtml(s.segment) + '</td>' +
+      '<td class="num">' + fmt(s.qty[0]) + '</td><td class="num">' + fmt(s.qty[1]) + '</td>' +
+      '<td class="num">' + fmt(s.qty[2]) + '</td><td class="num">' + fmt(s.qty[3]) + '</td>' +
+      '<td class="num ' + growthClass(g) + '">' + fmtPct(g) + '</td>' +
+      '<td class="num">' + fmt(s.baCount) + '</td><td class="num">' + fmt(s.focusCount) + '</td>' +
+      '<td class="num">' + fmtPct(s.coveragePct) + '</td></tr>';
+  }).join('');
+}
+
+function renderLocalityTable(lt) {
+  document.querySelector('#localityTable tbody').innerHTML = lt.map(l =>
+    '<tr><td>' + escapeHtml(l.category) + '</td>' +
+    '<td class="num">' + fmt(l.qty[0]) + '</td><td class="num">' + fmt(l.qty[1]) + '</td>' +
+    '<td class="num">' + fmt(l.qty[2]) + '</td><td class="num">' + fmt(l.qty[3]) + '</td>' +
+    '<td class="num">' + fmt(l.baCount) + '</td><td class="num">' + fmt(l.focusCount) + '</td></tr>'
+  ).join('');
+}
+
+function renderSOTable() {
+  document.querySelector('#soTable tbody').innerHTML = SO_DATA.map(so =>
+    '<tr><td>' + escapeHtml(so.name) + '</td><td>' + escapeHtml(so.designation) + '</td>' +
+    '<td class="num">' + fmt(so.allAccounts) + '</td><td class="num">' + fmt(so.visits) + '</td>' +
+    '<td class="num">' + fmtPct(so.visitAch) + '</td>' +
+    '<td class="num">' + fmt(so.focusAccounts) + '</td><td class="num">' + fmt(so.focusVisits) + '</td>' +
+    '<td class="num">' + fmtPct(so.focusAch) + '</td>' +
+    '<td class="num">' + fmt(so.sepTarget) + '</td><td class="num">' + fmt(so.sepAch) + '</td>' +
+    '<td class="num">' + fmtPct(so.sepAchPct) + '</td>' +
+    '<td class="num">' + fmt(so.pipelineTarget) + '</td><td class="num">' + fmt(so.pipelineAch) + '</td>' +
+    '<td class="num">' + fmt(so.newLeads) + '</td><td class="num">' + fmt(so.pipelineFromLeads) + '</td></tr>'
+  ).join('');
+}
+
+function showError(err) {
+  const el = document.getElementById('status');
+  el.textContent = 'Error: ' + err.message;
+  el.classList.add('error');
+  document.getElementById('loadingOverlay').style.display = 'none';
+  console.error(err);
+}
+
+async function init() {
+  try {
+    const res = await fetch(DATA_FILE);
+    const buf = await res.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+    const ws = wb.Sheets['Detailed Sheet'];
+    const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, range: 1 });
+    const hdr = aoa[0];
+    const raw = aoa.slice(1).map(row => {
+      const obj = {};
+      hdr.forEach((h, i) => { obj[h] = row[i]; });
+      return obj;
+    });
+    ROWS = prepareRows(raw).filter(r => r.gstin);
+
+    const soRes = await fetch(SO_FILE);
+    SO_DATA = soRes.ok ? await soRes.json() : [];
+
+    document.getElementById('status').textContent = ROWS.length.toLocaleString() + ' accounts loaded';
+    BA_TYPES = [...new Set(ROWS.map(r => r.baType))].sort();
+    SEGMENTS = [...new Set(ROWS.map(r => r.segment))].sort();
+    LOYALTIES = [...new Set(ROWS.map(r => r.loyalty))].sort();
+    ZONES = [...new Set(ROWS.map(r => r.zone))].sort();
+    LOCALITY_CATS = [...new Set(ROWS.map(r => r.localityCategory))].sort();
+
+    buildFilterBar();
+    render();
+    document.getElementById('loadingOverlay').style.display = 'none';
+  } catch (err) {
+    showError(err);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
